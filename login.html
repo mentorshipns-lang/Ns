@@ -2,56 +2,59 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Login |ns mentorship</title>
+<title>Login | NS Mentorship</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
 body {
   font-family: Arial, sans-serif;
-  background:#e0f2ff;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  height:100vh;
-  margin:0;
+  background: #e0f2ff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
 }
 .container {
-  background:white;
-  padding:30px 40px;
-  border-radius:12px;
-  box-shadow:0 4px 12px rgba(0,0,0,0.2);
-  width:100%;
-  max-width:400px;
+  background: white;
+  padding: 30px 40px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  width: 100%;
+  max-width: 400px;
+  box-sizing: border-box;
 }
 h2 {
-  text-align:center;
-  color:#0B3D91;
+  text-align: center;
+  color: #0B3D91;
 }
 input {
-  width:100%;
-  padding:10px;
-  margin:10px 0;
-  border-radius:6px;
-  border:1px solid #ccc;
-  font-size:16px;
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 16px;
+  box-sizing: border-box;
 }
 button {
-  width:100%;
-  padding:12px;
-  background:#0B3D91;
-  color:white;
-  font-size:16px;
-  border:none;
-  border-radius:6px;
-  cursor:pointer;
+  width: 100%;
+  padding: 12px;
+  background: #0B3D91;
+  color: white;
+  font-size: 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
 }
 button:hover {
-  background:#094080;
+  background: #094080;
 }
 .message {
-  text-align:center;
-  margin-top:10px;
-  color:red;
+  text-align: center;
+  margin-top: 10px;
+  color: red;
+  min-height: 20px;
 }
 </style>
 </head>
@@ -74,19 +77,18 @@ button:hover {
 </div>
 
 <script type="module">
-
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDCsDOnbC1nUkN2qUCWnJwK-HVVW_uF-II",
-  authDomain: "ns-mentorship.firebaseapp.com",
-  projectId: "ns-mentorship",
-  storageBucket: "ns-mentorship.firebasestorage.app",
-  messagingSenderId: "593826834406",
-  appId: "1:593826834406:web:a3c12ffebc61d3e92f5827",
-  measurementId: "G-FD81Z0VQ1Q"
+  apiKey: "AIzaSyC1YH0tA8mO3qujnps8p5UbgMix91tO5-U",
+  authDomain: "biochemistry-b4b77.firebaseapp.com",
+  projectId: "biochemistry-b4b77",
+  storageBucket: "biochemistry-b4b77.appspot.com",
+  messagingSenderId: "886538300649",
+  appId: "1:886538300649:web:d2bfde3c4e141a95085478",
+  measurementId: "G-GTYWCZTJMW"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -108,27 +110,48 @@ loginForm.addEventListener("submit", async (e) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
-    const userDoc = await getDoc(doc(db, "users", user.uid));
+    const userRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
-      throw new Error("User data not found");
+      messageEl.textContent = "User data not found.";
+      await signOut(auth);
+      return;
     }
 
-    const countdownEnd = userDoc.data().countdownEnd.toDate();
+    const data = userDoc.data();
 
-    if (countdownEnd < new Date()) {
+    // Block only if still pending approval
+    if (data.disabled === true) {
+      messageEl.textContent = "Your account is pending approval. Please contact admin.";
+      await signOut(auth);
+      return;
+    }
+
+    // Check expiry only if it exists
+    let expiryDate = null;
+
+    if (data.countdownEnd && typeof data.countdownEnd.toDate === "function") {
+      expiryDate = data.countdownEnd.toDate();
+    } else if (data.trialEndDate && typeof data.trialEndDate.toDate === "function") {
+      expiryDate = data.trialEndDate.toDate();
+    }
+
+    // If expiry exists and is expired, block
+    if (expiryDate && expiryDate < new Date()) {
       messageEl.textContent = "Your access has expired!";
       await signOut(auth);
       return;
     }
 
+    // If approved, allow login even when no expiry exists
     window.location.href = "dashboard.html";
 
   } catch (error) {
-    messageEl.textContent = error.message;
+    console.error("REAL LOGIN ERROR:", error);
+    messageEl.textContent = error.message; // show exact error for now
   }
 });
-
 </script>
 
 </body>
