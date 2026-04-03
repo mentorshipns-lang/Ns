@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Videos</title>
+<style>
+body { margin:0; font-family: Arial,sans-serif; background:#f0f8ff; }
+header {
+    background:#0B3D91;
+    color:white;
+    padding:15px 20px;
+    display:flex;
+    align-items:center;
+    box-shadow:0 2px 6px rgba(0,0,0,0.2);
+}
+header h1 {
+    margin:0;
+    font-size:1.5em;
+    flex-grow:1;
+    text-align:center;
+}
+.back-symbol {
+    font-size:1.4em;
+    cursor:pointer;
+    margin-right:10px;
+    user-select:none;
+}
+.container {
+    max-width:800px;
+    margin:20px auto;
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:16px;
+}
+.button {
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:white;
+    color:#0B3D91;
+    padding:20px;
+    border:none;
+    border-radius:12px;
+    cursor:pointer;
+    font-size:16px;
+    font-weight:bold;
+    text-align:center;
+    box-shadow:0 3px 8px rgba(0,0,0,0.15);
+    transition: transform 0.2s, background 0.2s;
+}
+.button:hover { transform:translateY(-3px); background:#e6f2ff; }
+.file-card {
+    display:flex;
+    align-items:center;
+    background:white;
+    color:#0B3D91;
+    padding:15px 20px;
+    margin:6px 0;
+    border-radius:12px;
+    cursor:pointer;
+    font-size:16px;
+    font-weight:bold;
+    box-shadow:0 3px 8px rgba(0,0,0,0.15);
+    transition: transform 0.2s, background 0.2s;
+    grid-column:1 / -1;
+}
+.file-card:hover { transform:translateY(-2px); background:#e6f2ff; }
+#previewContainer {
+    width: 100%;
+    height: 50vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background: white;
+    display: none;
+    z-index: 1000;
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+#previewContainer iframe { width: 100%; height: 100%; border: none; border-radius: inherit; }
+#closePreview {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #f44336;
+    color: white;
+    border: none;
+    padding: 12px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    z-index: 1001;
+}
+#closePreview:hover { background:#d32f2f; }
+</style>
+</head>
+<body>
+
+<header>
+    <span id="backBtn" class="back-symbol" style="display:none;">←</span>
+    <h1>Ns Videos</h1>
+</header>
+
+<div class="container" id="content"></div>
+
+<div id="previewContainer">
+    <button id="closePreview">Close ✖</button>
+    <iframe id="previewIframe" allowfullscreen></iframe>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDCsDOnbC1nUkN2qUCWnJwK-HVVW_uF-II",
+  authDomain: "ns-mentorship.firebaseapp.com",
+  projectId: "ns-mentorship",
+  storageBucket: "ns-mentorship.firebasestorage.app",
+  messagingSenderId: "593826834406",
+  appId: "1:593826834406:web:a3c12ffebc61d3e92f5827",
+  measurementId: "G-FD81Z0VQ1Q"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const content = document.getElementById("content");
+const backBtn = document.getElementById("backBtn");
+const previewContainer = document.getElementById("previewContainer");
+const previewIframe = document.getElementById("previewIframe");
+const closePreview = document.getElementById("closePreview");
+
+let selectedTerm = null;
+let selectedCourse = null;
+
+// Close preview
+closePreview.onclick = () => {
+    previewContainer.style.display = "none";
+    previewIframe.src = "";
+};
+
+// Back button logic
+backBtn.onclick = () => {
+    if(selectedCourse){
+        selectedCourse = null;
+        loadContent();
+    } else if(selectedTerm){
+        selectedTerm = null;
+        loadContent();
+    }
+};
+
+// Load hierarchical content
+function loadContent(){
+    content.innerHTML = "";
+    backBtn.style.display = (selectedTerm || selectedCourse) ? "inline-block" : "none";
+
+    db.collection("videos").get().then(snapshot=>{
+        const allData = snapshot.docs.map(d=>d.data());
+
+        if(!selectedTerm){
+            // Show terms
+            const terms = [...new Set(allData.map(d=>d.term))].sort((a,b)=>a-b);
+            if(terms.length===0){ content.innerHTML="<p>No videos uploaded yet.</p>"; return; }
+            terms.forEach(term=>{
+                const btn = document.createElement("button");
+                btn.className="button";
+                btn.textContent="Term "+term;
+                btn.onclick=()=> { selectedTerm=term; loadContent(); };
+                content.appendChild(btn);
+            });
+            return;
+        }
+
+        if(!selectedCourse){
+            // Show courses for selected term
+            const courses = [...new Set(allData.filter(d=>d.term===selectedTerm).map(d=>d.course))].sort();
+            courses.forEach(course=>{
+                const btn = document.createElement("button");
+                btn.className="button";
+                btn.textContent=course;
+                btn.onclick=()=> { selectedCourse=course; loadContent(); };
+                content.appendChild(btn);
+            });
+            return;
+        }
+
+        // Show videos for selected term + course
+        let videos = allData.filter(d=>d.term===selectedTerm && d.course===selectedCourse);
+        videos.sort((a,b)=>(a.order||999)-(b.order||999));
+
+        if(videos.length===0){ content.innerHTML="<p>No videos found for this selection</p>"; return; }
+
+        videos.forEach(video=>{
+            const card = document.createElement("div");
+            card.className="file-card";
+            card.textContent = `${video.order!==undefined && video.order!==999 ? video.order+". " : ""}${video.title}`;
+            card.onclick = ()=>openVideo(video.link);
+            content.appendChild(card);
+        });
+    });
+}
+
+// Open video in half-screen
+function openVideo(link){
+    const id = extractDriveId(link);
+    if(id){
+        previewIframe.src = `https://drive.google.com/file/d/${id}/preview`;
+        previewContainer.style.display="block";
+    } else alert("Invalid video link");
+}
+
+// Extract Google Drive ID
+function extractDriveId(url){
+    const match = url.match(/[-\w]{25,}/);
+    return match ? match[0] : "";
+}
+
+// INIT
+loadContent();
+</script>
+
+</body>
+</html>

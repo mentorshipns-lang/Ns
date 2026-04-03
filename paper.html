@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Past Papers</title>
+<style>
+* { box-sizing: border-box; }
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f0f8ff;
+}
+
+header {
+  background: #0B3D91;
+  color: white;
+  padding: 15px 20px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  position: relative;
+}
+
+header h1 {
+  margin: 0;
+  font-size: 1.5em;
+  flex-grow: 1;
+  text-align: center;
+}
+
+.back-btn {
+  position: absolute;
+  left: 15px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: white;
+  display: none;
+}
+
+.top-controls {
+  max-width: 900px;
+  margin: 18px auto 10px;
+  padding: 0 10px;
+}
+
+.toggle-wrap {
+  display: flex;
+  max-width: 420px;
+  margin: 0 auto;
+  background: #d9d9d9;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  background: #d9d9d9;
+  color: #333;
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+  font-size: 14px;
+}
+
+.toggle-btn:hover {
+  background: #cfcfcf;
+}
+
+.toggle-btn.active {
+  background: #0B3D91;
+  color: white;
+}
+
+.mode-label {
+  text-align: center;
+  margin-top: 10px;
+  font-size: 14px;
+  color: #0B3D91;
+  font-weight: bold;
+}
+
+.container {
+  max-width: 900px;
+  margin: 15px auto 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  padding: 0 10px;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  text-align: center;
+  font-weight: bold;
+  color: #0B3D91;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+  word-break: break-word;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  background: #e6f2ff;
+}
+
+.empty-message {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #555;
+  background: white;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+}
+
+#viewer {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.9);
+  z-index: 1000;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+#viewer button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  font-size: 28px;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+}
+
+#viewer iframe {
+  width: 90%;
+  height: 90vh;
+  border: none;
+  border-radius: 8px;
+  background: white;
+}
+
+@media (max-width: 700px) {
+  .container {
+    grid-template-columns: 1fr;
+  }
+
+  header h1 {
+    font-size: 1.2em;
+  }
+
+  .toggle-btn {
+    font-size: 13px;
+    padding: 11px;
+  }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="back-btn" onclick="goBack()">&#8592;</button>
+  <h1>Past Papers</h1>
+</header>
+
+<div class="top-controls">
+  <div class="toggle-wrap">
+    <button id="questionBtn" class="toggle-btn active" onclick="switchPaperType('question')">Question Papers</button>
+    <button id="solvedBtn" class="toggle-btn" onclick="switchPaperType('solved')">Solved Papers</button>
+  </div>
+  <div class="mode-label" id="modeLabel">Showing: Question Papers</div>
+</div>
+
+<div id="mainContainer" class="container"></div>
+
+<div id="viewer">
+  <button onclick="closeViewer()">&times;</button>
+  <iframe id="paperFrame"></iframe>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+// Firebase Config
+const firebaseConfig = {
+  apiKey: "AIzaSyDCsDOnbC1nUkN2qUCWnJwK-HVVW_uF-II",
+  authDomain: "ns-mentorship.firebaseapp.com",
+  projectId: "ns-mentorship",
+  storageBucket: "ns-mentorship.firebasestorage.app",
+  messagingSenderId: "593826834406",
+  appId: "1:593826834406:web:a3c12ffebc61d3e92f5827",
+  measurementId: "G-FD81Z0VQ1Q"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// --- Variables ---
+let selectedSubject = null;
+let currentPaperType = "question"; // default
+let papersData = [];
+
+const container = document.getElementById("mainContainer");
+const backBtn = document.querySelector(".back-btn");
+const modeLabel = document.getElementById("modeLabel");
+const questionBtn = document.getElementById("questionBtn");
+const solvedBtn = document.getElementById("solvedBtn");
+
+// --- Load Papers ---
+db.collection("pastpapers").get().then(snapshot => {
+  papersData = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+  showSubjects();
+}).catch(err => {
+  container.innerHTML = "<div class='empty-message' style='color:red;'>Error fetching papers: " + err.message + "</div>";
+});
+
+// --- Switch Toggle ---
+function switchPaperType(type) {
+  currentPaperType = type;
+  selectedSubject = null;
+
+  questionBtn.classList.remove("active");
+  solvedBtn.classList.remove("active");
+
+  if (type === "question") {
+    questionBtn.classList.add("active");
+    modeLabel.textContent = "Showing: Question Papers";
+  } else {
+    solvedBtn.classList.add("active");
+    modeLabel.textContent = "Showing: Solved Papers";
+  }
+
+  showSubjects();
+}
+
+// --- Get filtered papers by type ---
+// Old uploads with missing type are treated as "question"
+function getFilteredPapers() {
+  return papersData.filter(p => {
+    const paperType = p.type ? p.type.toLowerCase() : "question";
+    return paperType === currentPaperType;
+  });
+}
+
+// --- Show Subjects ---
+function showSubjects() {
+  container.innerHTML = "";
+  backBtn.style.display = "none";
+
+  const filteredPapers = getFilteredPapers();
+
+  if (filteredPapers.length === 0) {
+    container.innerHTML = `<div class="empty-message">No ${
+      currentPaperType === "question" ? "question papers" : "solved papers"
+    } available yet.</div>`;
+    return;
+  }
+
+  const subjects = [...new Set(filteredPapers.map(p => p.subject).filter(Boolean))];
+
+  if (subjects.length === 0) {
+    container.innerHTML = `<div class="empty-message">No subjects found for ${
+      currentPaperType === "question" ? "question papers" : "solved papers"
+    }.</div>`;
+    return;
+  }
+
+  subjects.sort((a, b) => a.localeCompare(b));
+
+  subjects.forEach(sub => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.textContent = sub;
+    card.onclick = () => {
+      selectedSubject = sub;
+      showFiles();
+    };
+    container.appendChild(card);
+  });
+}
+
+// --- Show Files ---
+function showFiles() {
+  container.innerHTML = "";
+  backBtn.style.display = "inline-block";
+
+  const files = getFilteredPapers()
+    .filter(p => p.subject === selectedSubject)
+    .sort((a, b) => {
+      const yearA = String(a.year || "");
+      const yearB = String(b.year || "");
+      return yearB.localeCompare(yearA); // latest first
+    });
+
+  if (files.length === 0) {
+    container.innerHTML = "<div class='empty-message'>No papers found for this subject.</div>";
+    return;
+  }
+
+  files.forEach(f => {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    let displayTitle = f.title || "Untitled Paper";
+    if (f.year) {
+      displayTitle += ` (${f.year})`;
+    }
+
+    card.textContent = displayTitle;
+    card.onclick = () => openViewer(f.link);
+    container.appendChild(card);
+  });
+}
+
+// --- Back button ---
+function goBack() {
+  if (selectedSubject) {
+    selectedSubject = null;
+    showSubjects();
+  }
+}
+
+// --- Viewer ---
+function openViewer(link) {
+  document.getElementById("viewer").style.display = "flex";
+
+  // Google Drive PDF preview support
+  const idMatch = link ? link.match(/[-\w]{25,}/) : null;
+  const id = idMatch ? idMatch[0] : null;
+
+  if (id) {
+    document.getElementById("paperFrame").src = `https://drive.google.com/file/d/${id}/preview`;
+  } else {
+    document.getElementById("paperFrame").src = link || "";
+  }
+}
+
+function closeViewer() {
+  document.getElementById("viewer").style.display = "none";
+  document.getElementById("paperFrame").src = "";
+}
+</script>
+
+</body>
+</html>

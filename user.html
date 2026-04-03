@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - User Management</title>
+<meta name="theme-color" content="#2575fc">
+
+<style>
+body { margin:0; font-family: Arial, sans-serif; background:#f5f7fa; color:#111; }
+header { 
+    background:#1e3a8a; 
+    color:white; 
+    padding:15px 20px; 
+    text-align:center; 
+    font-size:1.4em; 
+    font-weight:bold; 
+    position: relative; 
+}
+header #dashboard-btn {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 5px 12px;
+    font-size: 0.9em;
+    background: #ff9800;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    display: none; 
+}
+header #dashboard-btn:hover { background: #e68900; }
+
+.container { max-width:1000px; margin:20px auto; padding:0 10px; }
+h2 { text-align:center; color:#1e3a8a; }
+table { width:100%; border-collapse:collapse; margin-top:15px; }
+th, td { border:1px solid #ccc; padding:8px; text-align:left; }
+th { background:#1e3a8a; color:white; }
+tr:nth-child(even) { background:#f9f9f9; }
+tr:hover { background:#eee; }
+button { padding:5px 10px; margin:2px; border:none; border-radius:4px; cursor:pointer; font-size:0.85em; }
+button.enable { background:#0bb40b; color:white; }
+button.disable { background:#d01a0b; color:white; }
+
+form { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:15px; background:white; padding:15px; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.15); }
+form input { flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; }
+form button { flex:none; background:#1e3a8a; color:white; }
+
+#security-section { max-width:400px; margin:50px auto; padding:20px; background:white; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.15); text-align:center; }
+#security-section input { padding:8px; border-radius:6px; border:1px solid #ccc; width:70%; margin-bottom:10px; }
+#security-section button { background:#1e3a8a; color:white; padding:8px 12px; border:none; border-radius:6px; cursor:pointer; }
+#edit-code-section { display:none; margin-top:10px; }
+#edit-code-section input { width:60%; }
+</style>
+</head>
+<body>
+
+<header>
+   <button id="dashboard-btn">Upload Files</button>
+</header>
+
+<div id="security-section">
+    <h2>Enter Admin Code</h2>
+    <input type="password" id="security-input" placeholder="Security Code">
+    <br>
+    <button id="security-btn">Submit</button>
+
+    <div id="edit-code-section">
+        <input type="password" id="new-code" placeholder="New Code">
+        <button id="update-code-btn">Update Code</button>
+    </div>
+</div>
+
+<div id="admin-content" style="display:none;">
+    <div class="container">
+        <h2>Create User</h2>
+        <form id="create-user-form">
+            <input type="text" id="name" placeholder="Full Name" required>
+            <input type="email" id="email" placeholder="Email" required>
+            <input type="text" id="whatsapp" placeholder="WhatsApp Number" required>
+            <input type="password" id="password" placeholder="Password" required>
+            <input type="date" id="trial-end-date" placeholder="Trial End Date" required>
+            <button type="submit">Create User</button>
+        </form>
+
+        <h2>Existing Users</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>WhatsApp</th>
+                    <th>Signed Up</th>
+                    <th>Trial Ends</th>
+                    <th>Days Remaining</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-body"></tbody>
+        </table>
+    </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+import { getAuth, createUserWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyDCsDOnbC1nUkN2qUCWnJwK-HVVW_uF-II",
+    authDomain: "ns-mentorship.firebaseapp.com",
+    projectId: "ns-mentorship",
+    storageBucket: "ns-mentorship.firebasestorage.app",
+    messagingSenderId: "593826834406",
+    appId: "1:593826834406:web:a3c12ffebc61d3e92f5827",
+    measurementId: "G-FD81Z0VQ1Q"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const usersBody = document.getElementById("users-body");
+const adminContent = document.getElementById("admin-content");
+const securitySection = document.getElementById("security-section");
+const securityInput = document.getElementById("security-input");
+const securityBtn = document.getElementById("security-btn");
+const editCodeSection = document.getElementById("edit-code-section");
+const newCodeInput = document.getElementById("new-code");
+const updateCodeBtn = document.getElementById("update-code-btn");
+const dashboardBtn = document.getElementById("dashboard-btn");
+
+let securityCode = "1"; 
+let currentUserEmail = null;
+
+// --- Wait for user login ---
+onAuthStateChanged(auth, (user)=>{
+    if(user){
+        currentUserEmail = user.email;
+    } else {
+        alert("You must be logged in to access admin panel.");
+        window.location.href = "login.html"; 
+    }
+});
+
+// --- Security Code ---
+securityBtn.addEventListener("click", ()=>{
+    const inputCode = securityInput.value;
+    if(inputCode === securityCode){
+        securitySection.style.display = "none";
+        adminContent.style.display = "block";
+        dashboardBtn.style.display = "inline-block";
+        if(currentUserEmail === "enockkaunda390@gmail.com"){
+            editCodeSection.style.display = "block";
+        }
+    } else {
+        alert("Incorrect Security Code!");
+    }
+});
+
+updateCodeBtn.addEventListener("click", ()=>{
+    const newCode = newCodeInput.value.trim();
+    if(newCode.length > 0){
+        securityCode = newCode;
+        alert("Security code updated!");
+        newCodeInput.value = "";
+    }
+});
+
+// ---- Real-time Load Users ----
+function loadUsers() {
+    onSnapshot(collection(db, "users"), snapshot => {
+        usersBody.innerHTML = "";
+        snapshot.forEach(docSnap => {
+            const user = docSnap.data();
+            const signupDate = user.createdAt ? new Date(user.createdAt.seconds*1000) : new Date();
+            const trialEnd = user.trialEndDate ? new Date(user.trialEndDate.seconds*1000) : new Date(signupDate.getTime() + 7*24*60*60*1000);
+            const today = new Date();
+            const remainingDays = Math.ceil((trialEnd - today)/(1000*60*60*24));
+
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${user.name}</td>
+                <td>${user.email}</td>
+                <td>${user.whatsapp || ""}</td>
+                <td>${signupDate.toLocaleDateString()}</td>
+                <td>${trialEnd.toLocaleDateString()}</td>
+                <td>${remainingDays > 0 ? remainingDays : 0}</td>
+                <td>${user.disabled ? "Disabled" : "Active"}</td>
+                <td>
+                    <button class="${user.disabled ? 'enable' : 'disable'}" onclick="toggleUser('${docSnap.id}', ${user.disabled})">
+                        ${user.disabled ? 'Enable' : 'Disable'}
+                    </button>
+                    <button onclick="editUser('${docSnap.id}', '${user.name}', '${user.email}', '${user.whatsapp}', '${trialEnd.toISOString().slice(0,10)}')">Edit</button>
+                </td>
+            `;
+            usersBody.appendChild(tr);
+        });
+    });
+}
+
+// ---- Create User ----
+document.getElementById("create-user-form").addEventListener("submit", async e=>{
+    e.preventDefault();
+    const name = document.getElementById("name").value.trim();
+    const email = document.getElementById("email").value.trim();
+    const whatsapp = document.getElementById("whatsapp").value.trim();
+    const password = document.getElementById("password").value;
+    const trialEndDate = new Date(document.getElementById("trial-end-date").value);
+
+    try{
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        await setDoc(doc(db, "users", cred.user.uid), {
+            name, email, whatsapp, disabled:false, createdAt:new Date(), trialEndDate
+        });
+        alert(`User ${name} created successfully!`);
+        document.getElementById("create-user-form").reset();
+    }catch(err){
+        alert("Error: "+err.message);
+    }
+});
+
+// ---- Enable / Disable User ----
+window.toggleUser = async (uid, currentState)=>{
+    await updateDoc(doc(db, "users", uid), {disabled:!currentState});
+};
+
+// ---- Edit User ----
+window.editUser = async (uid, name, email, whatsapp, trialEndDate)=>{
+    const newName = prompt("Name:", name) || name;
+    const newEmail = prompt("Email:", email) || email;
+    const newWhatsapp = prompt("WhatsApp Number:", whatsapp) || whatsapp;
+    const newTrialEnd = prompt("Trial End Date (YYYY-MM-DD):", trialEndDate) || trialEndDate;
+
+    await updateDoc(doc(db, "users", uid), {name:newName, email:newEmail, whatsapp:newWhatsapp, trialEndDate:new Date(newTrialEnd)});
+};
+
+// ---- Redirect to Dashboard ----
+dashboardBtn.addEventListener("click", ()=>{
+    window.location.href = "file.html";
+});
+
+// ---- Initial Load ----
+loadUsers();
+</script>
+
+</body>
+</html>

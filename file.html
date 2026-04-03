@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin - Upload Content</title>
+<meta name="theme-color" content="#0B3D91">
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#f5f5f5}
+header{background:#0B3D91;color:white;padding:15px;text-align:center;font-size:1.3em;font-weight:bold}
+.nav-tabs{display:flex;background:#222}
+.nav-tabs button{flex:1;padding:10px;border:none;background:#222;color:white;font-weight:bold;cursor:pointer}
+.nav-tabs button.active{background:#444}
+section{padding:15px}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{border:1px solid #ccc;padding:8px;font-size:.9em;text-align:left}
+th{background:#333;color:white}
+button.action-btn{padding:4px 8px;border:none;border-radius:4px;cursor:pointer;margin:2px}
+.edit{background:#0b79d0;color:white}
+.delete{background:#d01a0b;color:white}
+.save{background:#0bb40b;color:white}
+.cancel{background:#888;color:white}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);justify-content:center;align-items:center;z-index:1000}
+.modal-content{background:white;padding:20px;border-radius:10px;width:90%;max-width:500px}
+.modal-content label{display:block;margin-top:10px;font-weight:bold}
+.modal-content input,.modal-content select{width:100%;padding:8px;margin-top:5px}
+.modal-buttons{text-align:right;margin-top:15px}
+
+/* Past papers toggle */
+.toggle-wrapper{
+  display:flex;
+  margin:12px 0;
+  border-radius:8px;
+  overflow:hidden;
+  width:100%;
+  max-width:420px;
+  background:#ddd;
+}
+.toggle-btn{
+  flex:1;
+  padding:10px;
+  border:none;
+  cursor:pointer;
+  font-weight:bold;
+  background:#ddd;
+  color:#333;
+  transition:0.3s;
+}
+.toggle-btn:hover{
+  background:#ccc;
+}
+.active-toggle{
+  background:#0B3D91;
+  color:white;
+}
+</style>
+</head>
+<body>
+
+<header>Admin - Upload Content</header>
+
+<div class="nav-tabs">
+<button class="active" onclick="showTab(event,'videos')">Videos</button>
+<button onclick="showTab(event,'documents')">Documents</button>
+<button onclick="showTab(event,'pastpapers')">Past Papers</button>
+<button onclick="showTab(event,'quiz')">Quiz</button>
+</div>
+
+<section id="videos">
+<button onclick="openModal('videos')">+ Add Video</button>
+<table>
+<thead>
+<tr><th>Term</th><th>Course</th><th>Order</th><th>Title</th><th>Link</th><th>Actions</th></tr>
+</thead>
+<tbody id="videos-body"></tbody>
+</table>
+</section>
+
+<section id="documents" style="display:none;">
+<button onclick="openModal('documents')">+ Add Document</button>
+<table>
+<thead>
+<tr><th>Term</th><th>Course</th><th>Order</th><th>Title</th><th>Link</th><th>Actions</th></tr>
+</thead>
+<tbody id="documents-body"></tbody>
+</table>
+</section>
+
+<section id="pastpapers" style="display:none;">
+  <div class="toggle-wrapper">
+    <button id="question-toggle" class="toggle-btn active-toggle" onclick="switchPastPaperType('question')">Question Papers</button>
+    <button id="solved-toggle" class="toggle-btn" onclick="switchPastPaperType('solved')">Solved Papers</button>
+  </div>
+
+  <button id="add-pastpaper-btn" onclick="openModal('pastpapers')">+ Add Question Paper</button>
+
+  <table>
+    <thead>
+      <tr><th>Title</th><th>Subject</th><th>Year</th><th>Link</th><th>Actions</th></tr>
+    </thead>
+    <tbody id="pastpapers-body"></tbody>
+  </table>
+</section>
+
+<section id="quiz" style="display:none;">
+<button onclick="openModal('quiz')">+ Add Quiz</button>
+<table>
+<thead>
+<tr><th>Title</th><th>Quiz</th><th>Actions</th></tr>
+</thead>
+<tbody id="quiz-body"></tbody>
+</table>
+</section>
+
+<div class="modal" id="modal">
+<div class="modal-content">
+<h3 id="modal-title"></h3>
+<form id="modal-form"></form>
+<div class="modal-buttons">
+<button type="button" class="action-btn save" onclick="saveModal()">Save</button>
+<button type="button" class="action-btn cancel" onclick="closeModal()">Cancel</button>
+</div>
+</div>
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDCsDOnbC1nUkN2qUCWnJwK-HVVW_uF-II",
+  authDomain: "ns-mentorship.firebaseapp.com",
+  projectId: "ns-mentorship",
+  storageBucket: "ns-mentorship.firebasestorage.app",
+  messagingSenderId: "593826834406",
+  appId: "1:593826834406:web:a3c12ffebc61d3e92f5827",
+  measurementId: "G-FD81Z0VQ1Q"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const subjectsList = ["BI110","CH110","PH110","MA110","CS111","LA111"];
+const termsList = [1,2,3];
+
+let currentCollection = "";
+let editingDocId = null;
+let currentPastPaperType = "question";
+let editingPastPaperType = null;
+
+// Tabs
+function showTab(e,tab){
+  document.querySelectorAll("section").forEach(s=>s.style.display="none");
+  document.getElementById(tab).style.display="block";
+  document.querySelectorAll(".nav-tabs button").forEach(b=>b.classList.remove("active"));
+  e.currentTarget.classList.add("active");
+}
+
+// Past papers toggle
+function switchPastPaperType(type){
+  currentPastPaperType = type;
+
+  document.getElementById("question-toggle").classList.remove("active-toggle");
+  document.getElementById("solved-toggle").classList.remove("active-toggle");
+
+  if(type === "question"){
+    document.getElementById("question-toggle").classList.add("active-toggle");
+    document.getElementById("add-pastpaper-btn").innerText = "+ Add Question Paper";
+  } else {
+    document.getElementById("solved-toggle").classList.add("active-toggle");
+    document.getElementById("add-pastpaper-btn").innerText = "+ Add Solved Paper";
+  }
+
+  loadCollection("pastpapers");
+}
+
+// Modal
+function openModal(collection){
+  currentCollection = collection;
+  const form = document.getElementById("modal-form");
+
+  let modalHeading = "Add " + collection;
+  if(collection === "pastpapers"){
+    modalHeading = currentPastPaperType === "question" ? "Add Question Paper" : "Add Solved Paper";
+  }
+  document.getElementById("modal-title").innerText = modalHeading;
+
+  if(collection==="videos"||collection==="documents"){
+    form.innerHTML=`
+    <label>Term</label>
+    <select id="modal-term">${termsList.map(t=>`<option value="${t}">${t}</option>`).join("")}</select>
+    <label>Course</label><select id="modal-course">${subjectsList.map(s=>`<option>${s}</option>`).join("")}</select>
+    <label>Order</label><input type="number" id="modal-order" value="1">
+    <label>Title</label><input id="modal-title-field">
+    <label>Link</label><input id="modal-link">`;
+  }
+  else if(collection==="pastpapers"){
+    form.innerHTML=`
+    <label>Title</label><input id="modal-title-field">
+    <label>Subject</label><select id="modal-course">${subjectsList.map(s=>`<option>${s}</option>`).join("")}</select>
+    <label>Year</label><input id="modal-year">
+    <label>Link</label><input id="modal-link">`;
+  }
+  else if(collection==="quiz"){
+    form.innerHTML=`
+    <label>Title</label><input id="modal-title-field">
+    <label>Quiz File</label><input id="modal-link" placeholder="quiz1.html">`;
+  }
+
+  if(editingDocId){
+    db.collection(currentCollection).doc(editingDocId).get().then(doc=>{
+      const d = doc.data();
+      if(currentCollection==="videos"||currentCollection==="documents"){
+        document.getElementById("modal-term").value = d.term || 1;
+        document.getElementById("modal-course").value = d.course || subjectsList[0];
+        document.getElementById("modal-order").value = d.order || 1;
+        document.getElementById("modal-title-field").value = d.title || "";
+        document.getElementById("modal-link").value = d.link || "";
+      } else if(currentCollection==="pastpapers"){
+        document.getElementById("modal-title-field").value = d.title || "";
+        document.getElementById("modal-course").value = d.subject || subjectsList[0];
+        document.getElementById("modal-year").value = d.year || "";
+        document.getElementById("modal-link").value = d.link || "";
+      } else if(currentCollection==="quiz"){
+        document.getElementById("modal-title-field").value = d.title || "";
+        document.getElementById("modal-link").value = d.link || "";
+      }
+    });
+  }
+
+  document.getElementById("modal").style.display="flex";
+}
+
+function closeModal(){
+  editingDocId = null;
+  editingPastPaperType = null;
+  document.getElementById("modal").style.display="none";
+}
+
+// Save
+async function saveModal(){
+  let data = {};
+
+  if(currentCollection==="videos"||currentCollection==="documents"){
+    data = {
+      term:Number(document.getElementById("modal-term").value),
+      course:document.getElementById("modal-course").value,
+      order:Number(document.getElementById("modal-order").value || 1),
+      title:document.getElementById("modal-title-field").value,
+      link:document.getElementById("modal-link").value
+    };
+  }
+  else if(currentCollection==="pastpapers"){
+    data = {
+      title:document.getElementById("modal-title-field").value,
+      subject:document.getElementById("modal-course").value,
+      year:document.getElementById("modal-year").value,
+      type: editingDocId ? (editingPastPaperType || currentPastPaperType) : currentPastPaperType,
+      link:document.getElementById("modal-link").value
+    };
+  }
+  else if(currentCollection==="quiz"){
+    data = {
+      title:document.getElementById("modal-title-field").value,
+      link:document.getElementById("modal-link").value
+    };
+  }
+
+  if(editingDocId){
+    await db.collection(currentCollection).doc(editingDocId).update(data);
+    editingDocId = null;
+    editingPastPaperType = null;
+  } else {
+    await db.collection(currentCollection).add(data);
+  }
+
+  closeModal();
+  loadCollection(currentCollection);
+}
+
+// Load collection safely
+async function loadCollection(collection){
+  const tbody = document.getElementById(collection+"-body");
+  tbody.innerHTML = "";
+
+  const snapshot = await db.collection(collection).get();
+  const dataArr = snapshot.docs.map(doc=>({id:doc.id,...doc.data()}));
+
+  if(collection==="pastpapers"){
+    const filteredData = dataArr.filter(d => (d.type || "question") === currentPastPaperType);
+    filteredData.sort((a,b)=>{
+      return (a.subject||"").localeCompare(b.subject||"") || String(b.year||"").localeCompare(String(a.year||""));
+    });
+    filteredData.forEach(d=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${d.title||""}</td>
+        <td>${d.subject||""}</td>
+        <td>${d.year||""}</td>
+        <td><a href="${d.link||"#"}" target="_blank">Link</a></td>
+        <td>
+          <button class="edit action-btn" onclick="startEdit('${collection}','${d.id}')">Edit</button>
+          <button class="delete action-btn" onclick="deleteDoc('${collection}','${d.id}')">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    return;
+  }
+
+  if(collection==="videos"||collection==="documents"){
+    dataArr.sort((a,b)=>{
+      return (a.term||0)-(b.term||0) || (a.course||"").localeCompare(b.course||"") || (a.order||0)-(b.order||0);
+    });
+    dataArr.forEach(d=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${d.term||""}</td>
+        <td>${d.course||""}</td>
+        <td>${d.order||""}</td>
+        <td>${d.title||""}</td>
+        <td><a href="${d.link||"#"}" target="_blank">Link</a></td>
+        <td>
+          <button class="edit action-btn" onclick="startEdit('${collection}','${d.id}')">Edit</button>
+          <button class="delete action-btn" onclick="deleteDoc('${collection}','${d.id}')">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    return;
+  }
+
+  if(collection==="quiz"){
+    dataArr.forEach(d=>{
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${d.title||""}</td>
+        <td><a href="${d.link||"#"}" target="_blank"><button class="action-btn save">Go to Quiz</button></a></td>
+        <td>
+          <button class="edit action-btn" onclick="startEdit('${collection}','${d.id}')">Edit</button>
+          <button class="delete action-btn" onclick="deleteDoc('${collection}','${d.id}')">Delete</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+    return;
+  }
+}
+
+// Start edit
+function startEdit(collection,id){
+  editingDocId = id;
+
+  if(collection === "pastpapers"){
+    db.collection(collection).doc(id).get().then(docSnap => {
+      const data = docSnap.data();
+      editingPastPaperType = data.type || "question";
+      openModal(collection);
+    });
+  } else {
+    openModal(collection);
+  }
+}
+
+// Delete
+function deleteDoc(collection,id){
+  if(confirm("Delete this item?")){
+    db.collection(collection).doc(id).delete().then(()=>loadCollection(collection));
+  }
+}
+
+// Initial load
+["videos","documents","pastpapers","quiz"].forEach(loadCollection);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard | NS Mentorship</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+body { margin:0; font-family:Arial,sans-serif; background:#f0f8ff; }
+.header { display:flex; align-items:center; justify-content:space-between; background:#0B3D91; color:white; padding:15px 20px; }
+.header .hamburger, .header .logout { font-size:22px; cursor:pointer; }
+.header-center { flex:1; text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.header .title { font-size:22px; font-weight:bold; margin-bottom:5px; }
+.header .welcome { font-size:18px; margin-bottom:3px; }
+.header .countdown { font-size:16px; color:white; opacity:0.9; }
+.menu { position:fixed; top:0; left:0; width:260px; height:100%; background:#fff; box-shadow:2px 0 6px rgba(0,0,0,0.2); padding-top:20px; transform:translateX(-100%); transition:transform 0.3s ease; z-index:1000; display:flex; flex-direction:column; }
+.menu.open { transform:translateX(0); }
+.menu-top { text-align:center; padding:20px 0; border-bottom:1px solid #e3ebf5; }
+.menu-logo { width:100px; border-radius:50%; }
+.menu a { display:block; padding:15px 20px; text-decoration:none; color:#333; font-size:16px; }
+.menu a i { margin-right:10px; color:#0B3D91; }
+.menu a:hover { background:#e3ebf5; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:15px; padding:20px; }
+.card { background:white; padding:30px 20px; text-align:center; border-radius:14px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.08); transition:0.2s; }
+.card i { font-size:30px; color:#0B3D91; margin-bottom:10px; }
+.card span { display:block; font-size:16px; font-weight:500; }
+.card:hover { background:#eef3fa; }
+#whatsapp { position:fixed; bottom:20px; right:20px; background:#25D366; color:white; border-radius:50%; width:60px; height:60px; display:flex; justify-content:center; align-items:center; font-size:30px; box-shadow:0 3px 6px rgba(0,0,0,0.3); cursor:pointer; z-index:1000; }
+#adminLink { display:none; }
+</style>
+</head>
+<body>
+
+<div id="sideMenu" class="menu">
+    <div class="menu-top"><img src="beng.jpg" alt="Logo" class="menu-logo"></div>
+    <a href="about.html"><i class="fa-solid fa-phone"></i>Contact Us</a>
+    <a href="motivation.html"><i class="fa-solid fa-lightbulb"></i>Motivation</a>
+    <a href="ca_calculator.html"><i class="fa-solid fa-calculator"></i>CA-Calculator</a>
+    <a href="user.html" id="adminLink"><i class="fa-solid fa-user-shield"></i>Admin</a>
+</div>
+
+<div class="header">
+    <div class="hamburger"><i class="fa-solid fa-bars"></i></div>
+    <div class="header-center">
+        <div class="title">NS MENTORSHIP</div>
+        <div class="welcome">Welcome, <strong id="username">User</strong></div>
+        <div class="countdown" id="countdown">Loading countdown...</div>
+    </div>
+    <div class="logout"><i class="fa-solid fa-power-off"></i></div>
+</div>
+
+<div class="grid">
+    <div class="card" onclick="location.href='video.html'"><i class="fa-solid fa-play"></i><span>Video</span></div>
+    <div class="card" onclick="location.href='doc.html'"><i class="fa-solid fa-folder-open"></i><span>Documents</span></div>
+    <div class="card" onclick="location.href='quiz.html'"><i class="fa-solid fa-circle-question"></i><span>Quiz</span></div>
+    <div class="card" onclick="location.href='pastpapers.html'"><i class="fa-solid fa-box-archive"></i><span>Past Papers</span></div>
+</div>
+
+<div id="whatsapp" onclick="window.open('https://chat.whatsapp.com/YOUR_GROUP_LINK','_blank')"><i class="fa-brands fa-whatsapp"></i></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+const firebaseConfig = {
+ apiKey: "AIzaSyDCsDOnbC1nUkN2qUCWnJwK-HVVW_uF-II",
+ authDomain: "ns-mentorship.firebaseapp.com",
+ projectId: "ns-mentorship",
+ storageBucket: "ns-mentorship.firebasestorage.app",
+ messagingSenderId: "593826834406",
+ appId: "1:593826834406:web:a3c12ffebc61d3e92f5827",
+ measurementId: "G-FD81Z0VQ1Q"   
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+/* Sidebar toggle */
+const sideMenu = document.getElementById("sideMenu");
+const hamburger = document.querySelector('.hamburger');
+hamburger.onclick = () => sideMenu.classList.toggle("open");
+
+/* Click outside closes sidebar */
+document.addEventListener('click', e=>{
+    if(!sideMenu.contains(e.target) && !hamburger.contains(e.target)){
+        sideMenu.classList.remove("open");
+    }
+});
+
+/* Close sidebar on link click */
+sideMenu.querySelectorAll('a').forEach(link => link.addEventListener('click', ()=>{
+    sideMenu.classList.remove("open");
+}));
+
+/* Logout */
+document.querySelector('.logout').onclick = async ()=>{
+    await signOut(auth);
+    window.location.href = "login.html";
+};
+
+/* Auth check & countdown */
+onAuthStateChanged(auth, async user=>{
+    if(!user) return window.location.href="login.html";
+
+    const snap = await getDoc(doc(db,"users",user.uid));
+    const userData = snap.exists()? snap.data() : null;
+    if(!userData) return alert("User data not found!");
+
+    // Block disabled users
+    if(userData.disabled){
+        alert("Your account is pending approval. Please contact admin.");
+        await signOut(auth);
+        window.location.href = "login.html";
+        return;
+    }
+
+    // Show username
+    document.getElementById("username").innerText = userData.name || "User";
+
+    // Admin link
+    if(userData.role === "admin") document.getElementById("adminLink").style.display = "block";
+
+    // Countdown based on trialEndDate
+    if(!userData.trialEndDate){
+        document.getElementById("countdown").innerText="No access info";
+        return;
+    }
+
+    const countdownEl = document.getElementById("countdown");
+    function updateCountdown(){
+        const now = new Date();
+        const endTime = userData.trialEndDate.toDate ? userData.trialEndDate.toDate() : new Date(userData.trialEndDate);
+        const diff = endTime - now;
+
+        if(diff <= 0){
+            countdownEl.innerText = "Access expired!";
+            alert("Your access has expired!");
+            signOut(auth);
+            window.location.href="login.html";
+            return;
+        }
+
+        const d = Math.floor(diff/(1000*60*60*24));
+        const h = Math.floor((diff/(1000*60*60))%24);
+        const m = Math.floor((diff/(1000*60))%60);
+        const s = Math.floor((diff/1000)%60);
+        countdownEl.innerText = `${d}d ${h}h ${m}m ${s}s left`;
+    }
+
+    updateCountdown();
+    setInterval(updateCountdown,1000);
+});
+</script>
+
+</body>
+</html>

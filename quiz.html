@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Admin</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <style>
+  body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f0f8ff;
+  color: #0B3D91;
+}
+header {
+  background: #0B3D91;
+  color: white;
+  padding: 15px 20px;
+  text-align: center;
+  font-size: 1.5em;
+  font-weight: bold;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+.container {
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 16px;
+}
+.card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.12);
+  margin-bottom: 18px;
+}
+h2,h3 { margin-top:0; color:#0B3D91; }
+label { display:block; margin:10px 0 6px; font-weight:bold; }
+input, select, textarea {
+  width: 100%; box-sizing:border-box; padding:12px; border:1px solid #c7d8f5;
+  border-radius:10px; font-size:15px; outline:none;
+}
+textarea { resize:vertical; min-height:70px; }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.btn { border:none; border-radius:10px; padding:12px 16px; font-size:15px; font-weight:bold; cursor:pointer; margin-top:12px; margin-right:8px; }
+.btn-primary { background:#0B3D91; color:white; }
+.btn-primary:hover { background:#082f72; }
+.btn-secondary { background:#e6f2ff; color:#0B3D91; }
+.btn-secondary:hover { background:#d7ebff; }
+.btn-danger { background:#f44336; color:white; }
+.btn-danger:hover { background:#d32f2f; }
+.btn-warning { background:#ff9800; color:white; }
+.btn-warning:hover { background:#e68900; }
+.question-card { border:2px solid #e6f2ff; border-radius:12px; padding:14px; margin-top:14px; background:#fbfdff; }
+.question-title { font-weight:bold; margin-bottom:10px; font-size:1.05em; }
+.status { margin-top:14px; padding:12px; border-radius:10px; font-weight:bold; display:none; }
+.status.success { display:block; background:#e8f5e9; color:#2e7d32; }
+.status.error { display:block; background:#ffebee; color:#c62828; }
+.saved-list { margin-top:10px; }
+.saved-item { background:#fff; border:1px solid #dce9ff; border-radius:12px; padding:12px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06); }
+.saved-item-title { font-weight:bold; color:#0B3D91; margin-bottom:6px; }
+.small { color:#555; font-size:14px; }
+.loading { text-align:center; padding:20px; color:#0B3D91; font-weight:bold; }
+.edit-banner { display:none; margin-bottom:12px; padding:12px; border-radius:10px; background:#fff3cd; color:#856404; font-weight:bold; border:1px solid #ffe08a; }
+.button-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+@media(max-width:700px){.row{grid-template-columns:1fr;}}
+  </style>
+  <script src="quiz.js"></script>
+
+  <div id="adminContent" style="display:none">
+    <header>Fincep Quiz Admin</header>
+    <div class="container">
+      <div class="card">
+        <h2 id="formTitle">Create Quiz</h2>
+        <div id="editBanner" class="edit-banner">You are editing an existing quiz.</div>
+
+        <label for="subject">Course / Subject</label>
+        <select id="subject">
+          <option value="">-- Select Course --</option>
+          <option value="BI110">BI110</option>
+          <option value="CH110">CH110</option>
+          <option value="PH110">PH110</option>
+          <option value="MA110">MA110</option>
+          <option value="CS110">CS110</option>
+          <option value="LA111">LA111</option>
+        </select>
+
+        <label for="quizTitle">Quiz Title</label>
+        <input type="text" id="quizTitle" placeholder="e.g. Term 1 Quiz 1" />
+
+        <label for="timeMinutes">Time (minutes)</label>
+        <input type="number" id="timeMinutes" min="1" value="10" />
+
+        <button class="btn btn-secondary" onclick="addQuestion()">+ Add Question</button>
+        <div id="questionsContainer"></div>
+
+        <div class="button-row">
+          <button class="btn btn-primary" id="saveBtn" onclick="saveQuiz()">Save Quiz</button>
+          <button class="btn btn-warning" id="updateBtn" onclick="updateQuiz()" style="display:none;">Update Quiz</button>
+          <button class="btn btn-secondary" onclick="resetForm()">Clear Form</button>
+          <button class="btn btn-danger" id="cancelEditBtn" onclick="cancelEdit()" style="display:none;">Cancel Edit</button>
+        </div>
+        <div id="statusBox" class="status"></div>
+      </div>
+
+      <div class="card">
+        <h2>Uploaded Quizzes</h2>
+        <div id="quizList" class="saved-list">
+          <div class="loading">Loading quizzes...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js">
+  // 🔑 Password protection and quiz logic all in one
+const adminPassword = "123"; // change this
+
+document.addEventListener("DOMContentLoaded", () => {
+  let entered = prompt("Enter admin password:");
+  if (entered === adminPassword) {
+    document.getElementById("adminContent").style.display = "block";
+  } else {
+    document.body.innerHTML = "<h1 style='text-align:center; margin-top:50px; color:red;'>Access Denied</h1>";
+    return; // stop script
+  }
+
+  // 🔥 Firebase setup
+  firebase.initializeApp({
+    
+  });
+  const db = firebase.firestore();
+
+  // =====================
+  // DOM Elements
+  // =====================
+  const questionsContainer = document.getElementById("questionsContainer");
+  const statusBox = document.getElementById("statusBox");
+  const quizList = document.getElementById("quizList");
+
+  let questionCount = 0;
+  let editingQuizId = null;
+
+  // =====================
+  // Status Functions
+  // =====================
+  function showStatus(message, type = "success") {
+    statusBox.className = "status " + type;
+    statusBox.textContent = message;
+  }
+
+  function clearStatus() {
+    statusBox.className = "status";
+    statusBox.textContent = "";
+  }
+
+  // =====================
+  // Quiz Functions
+  // =====================
+  function addQuestion(data = null) {
+    questionCount++;
+    const qId = "q_" + questionCount;
+    const answerValue = data?.answer ?? data?.correctAnswer ?? data?.correctOption ?? "";
+
+    const div = document.createElement("div");
+    div.className = "question-card";
+    div.id = qId;
+
+    div.innerHTML = `
+      <div class="question-title">Question ${questionCount}</div>
+
+      <label>Question Text</label>
+      <textarea class="question-text" placeholder="Enter question here...">${data?.question || ""}</textarea>
+
+      <div class="row">
+        <div>
+          <label>Option A</label>
+          <input type="text" class="opt-a" value="${data?.options?.[0] || ""}" />
+        </div>
+        <div>
+          <label>Option B</label>
+          <input type="text" class="opt-b" value="${data?.options?.[1] || ""}" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Option C</label>
+          <input type="text" class="opt-c" value="${data?.options?.[2] || ""}" />
+        </div>
+        <div>
+          <label>Option D</label>
+          <input type="text" class="opt-d" value="${data?.options?.[3] || ""}" />
+        </div>
+      </div>
+
+      <label>Correct Answer</label>
+      <select class="correct-answer">
+        <option value="">-- Select Correct Option --</option>
+        <option value="0" ${Number(answerValue) === 0 ? "selected" : ""}>A</option>
+        <option value="1" ${Number(answerValue) === 1 ? "selected" : ""}>B</option>
+        <option value="2" ${Number(answerValue) === 2 ? "selected" : ""}>C</option>
+        <option value="3" ${Number(answerValue) === 3 ? "selected" : ""}>D</option>
+      </select>
+
+      <label>Explanation / Correction</label>
+      <textarea class="explanation" placeholder="Why is this answer correct?">${data?.explanation || ""}</textarea>
+
+      <button class="btn btn-danger" onclick="removeQuestion('${qId}')">Remove Question</button>
+    `;
+
+    questionsContainer.appendChild(div);
+  }
+
+  window.addQuestion = addQuestion; // make button clickable globally
+
+  function removeQuestion(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  }
+  window.removeQuestion = removeQuestion;
+
+  function setEditMode(isEditing) {
+    document.getElementById("formTitle").textContent = isEditing ? "Edit Quiz" : "Create Quiz";
+    document.getElementById("editBanner").style.display = isEditing ? "block" : "none";
+    document.getElementById("saveBtn").style.display = isEditing ? "none" : "inline-block";
+    document.getElementById("updateBtn").style.display = isEditing ? "inline-block" : "none";
+    document.getElementById("cancelEditBtn").style.display = isEditing ? "inline-block" : "none";
+  }
+
+  function resetForm() {
+    document.getElementById("subject").value = "";
+    document.getElementById("quizTitle").value = "";
+    document.getElementById("timeMinutes").value = 10;
+    questionsContainer.innerHTML = "";
+    questionCount = 0;
+    editingQuizId = null;
+    clearStatus();
+    setEditMode(false);
+    addQuestion();
+  }
+
+  window.resetForm = resetForm;
+  window.cancelEdit = () => { resetForm(); showStatus("Edit cancelled.", "success"); };
+
+  // =====================
+  // Collect Data
+  // =====================
+  function collectQuizData() {
+    const subject = document.getElementById("subject").value.trim();
+    const title = document.getElementById("quizTitle").value.trim();
+    const timeMinutes = parseInt(document.getElementById("timeMinutes").value);
+
+    if (!subject) { showStatus("Please select a course.", "error"); return null; }
+    if (!title) { showStatus("Please enter quiz title.", "error"); return null; }
+    if (!timeMinutes || timeMinutes < 1) { showStatus("Please enter a valid time in minutes.", "error"); return null; }
+
+    const questionCards = document.querySelectorAll(".question-card");
+    if (questionCards.length === 0) { showStatus("Please add at least one question.", "error"); return null; }
+
+    const questions = [];
+    for (let card of questionCards) {
+      const question = card.querySelector(".question-text").value.trim();
+      const a = card.querySelector(".opt-a").value.trim();
+      const b = card.querySelector(".opt-b").value.trim();
+      const c = card.querySelector(".opt-c").value.trim();
+      const d = card.querySelector(".opt-d").value.trim();
+      const answer = card.querySelector(".correct-answer").value;
+      const explanation = card.querySelector(".explanation").value.trim();
+
+      if (!question || !a || !b || !c || !d || answer === "") {
+        showStatus("Please complete all fields for every question.", "error");
+        return null;
+      }
+
+      questions.push({ question, options: [a, b, c, d], answer: parseInt(answer), explanation: explanation || "No explanation provided." });
+    }
+
+    return { subject, title, timeMinutes, questions };
+  }
+
+  // =====================
+  // Firebase CRUD
+  // =====================
+  async function saveQuiz() {
+    clearStatus();
+    const data = collectQuizData();
+    if (!data) return;
+    try {
+      showStatus("Saving quiz...", "success");
+      await db.collection("quizzes").add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      showStatus("Quiz saved successfully! ✅", "success");
+      resetForm();
+      loadUploadedQuizzes();
+    } catch (error) { console.error(error); showStatus("Failed to save quiz: " + error.message, "error"); }
+  }
+  window.saveQuiz = saveQuiz;
+
+  async function loadUploadedQuizzes() {
+    quizList.innerHTML = `<div class="loading">Loading quizzes...</div>`;
+    try {
+      const snapshot = await db.collection("quizzes").get();
+      if (snapshot.empty) { quizList.innerHTML = `<div class="small">No quizzes uploaded yet.</div>`; return; }
+      let items = [];
+      snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+      items.sort((a,b)=> (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+      quizList.innerHTML = "";
+      items.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "saved-item";
+        div.innerHTML = `
+          <div class="saved-item-title">${item.title}</div>
+          <div class="small"><strong>Course:</strong> ${item.subject || "N/A"}</div>
+          <div class="small"><strong>Time:</strong> ${item.timeMinutes || 0} min</div>
+          <div class="small"><strong>Questions:</strong> ${item.questions?.length || 0}</div>
+          <div class="button-row">
+            <button class="btn btn-warning" onclick="editQuiz('${item.id}')">Edit Quiz</button>
+            <button class="btn btn-danger" onclick="deleteQuiz('${item.id}')">Delete Quiz</button>
+          </div>`;
+        quizList.appendChild(div);
+      });
+    } catch (error) { console.error(error); quizList.innerHTML = `<div class="small" style="color:red;">Failed to load quizzes: ${error.message}</div>`; }
+  }
+  window.loadUploadedQuizzes = loadUploadedQuizzes;
+
+  async function deleteQuiz(id) {
+    if (!confirm("Delete this quiz?")) return;
+    try {
+      await db.collection("quizzes").doc(id).delete();
+      if (editingQuizId === id) resetForm();
+      showStatus("Quiz deleted successfully.", "success");
+      loadUploadedQuizzes();
+    } catch (error) { console.error(error); showStatus("Failed to delete quiz: " + error.message, "error"); }
+  }
+  window.deleteQuiz = deleteQuiz;
+
+  async function editQuiz(id) {
+    clearStatus();
+    try {
+      const doc = await db.collection("quizzes").doc(id).get();
+      if (!doc.exists) { showStatus("Quiz not found.", "error"); return; }
+      const data = doc.data();
+      editingQuizId = id;
+      document.getElementById("subject").value = data.subject || "";
+      document.getElementById("quizTitle").value = data.title || "";
+      document.getElementById("timeMinutes").value = data.timeMinutes || 10;
+      questionsContainer.innerHTML = "";
+      questionCount = 0;
+      (Array.isArray(data.questions)?data.questions:[]).forEach(q=>addQuestion(q));
+      if (!data.questions?.length) addQuestion();
+      setEditMode(true);
+      showStatus("Quiz loaded for editing.", "success");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) { console.error(error); showStatus("Failed to load quiz for editing: " + error.message, "error"); }
+  }
+  window.editQuiz = editQuiz;
+
+  async function updateQuiz() {
+    clearStatus();
+    if (!editingQuizId) { showStatus("No quiz selected for editing.", "error"); return; }
+    const data = collectQuizData();
+    if (!data) return;
+    try {
+      showStatus("Updating quiz...", "success");
+      await db.collection("quizzes").doc(editingQuizId).update({ ...data, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      showStatus("Quiz updated successfully! ✏️", "success");
+      resetForm();
+      loadUploadedQuizzes();
+    } catch (error) { console.error(error); showStatus("Failed to update quiz: " + error.message, "error"); }
+  }
+  window.updateQuiz = updateQuiz;
+
+  // =====================
+  // Init
+  // =====================
+  addQuestion();
+  loadUploadedQuizzes();
+});
+  </script>
+  <script>
+  // 🔑 Password protection and quiz logic all in one
+const adminPassword = "123"; // change this
+
+document.addEventListener("DOMContentLoaded", () => {
+  let entered = prompt("Enter admin password:");
+  if (entered === adminPassword) {
+    document.getElementById("adminContent").style.display = "block";
+  } else {
+    document.body.innerHTML = "<h1 style='text-align:center; margin-top:50px; color:red;'>Access Denied</h1>";
+    return; // stop script
+  }
+
+  // 🔥 Firebase setup
+  firebase.initializeApp({
+    apiKey: "AIzaSyClCl9tSlMfUNxBWym__WXj8FS_uBOA64M",
+    authDomain: "gptapp-fa2ff.firebaseapp.com",
+    projectId: "gptapp-fa2ff",
+    storageBucket: "gptapp-fa2ff.firebasestorage.app",
+    messagingSenderId: "834440426142",
+    appId: "1:834440426142:web:e01c200e13ee25bade818f",
+    measurementId: "G-GZZ28RMH36"
+  });
+  const db = firebase.firestore();
+
+  // =====================
+  // DOM Elements
+  // =====================
+  const questionsContainer = document.getElementById("questionsContainer");
+  const statusBox = document.getElementById("statusBox");
+  const quizList = document.getElementById("quizList");
+
+  let questionCount = 0;
+  let editingQuizId = null;
+
+  // =====================
+  // Status Functions
+  // =====================
+  function showStatus(message, type = "success") {
+    statusBox.className = "status " + type;
+    statusBox.textContent = message;
+  }
+
+  function clearStatus() {
+    statusBox.className = "status";
+    statusBox.textContent = "";
+  }
+
+  // =====================
+  // Quiz Functions
+  // =====================
+  function addQuestion(data = null) {
+    questionCount++;
+    const qId = "q_" + questionCount;
+    const answerValue = data?.answer ?? data?.correctAnswer ?? data?.correctOption ?? "";
+
+    const div = document.createElement("div");
+    div.className = "question-card";
+    div.id = qId;
+
+    div.innerHTML = `
+      <div class="question-title">Question ${questionCount}</div>
+
+      <label>Question Text</label>
+      <textarea class="question-text" placeholder="Enter question here...">${data?.question || ""}</textarea>
+
+      <div class="row">
+        <div>
+          <label>Option A</label>
+          <input type="text" class="opt-a" value="${data?.options?.[0] || ""}" />
+        </div>
+        <div>
+          <label>Option B</label>
+          <input type="text" class="opt-b" value="${data?.options?.[1] || ""}" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Option C</label>
+          <input type="text" class="opt-c" value="${data?.options?.[2] || ""}" />
+        </div>
+        <div>
+          <label>Option D</label>
+          <input type="text" class="opt-d" value="${data?.options?.[3] || ""}" />
+        </div>
+      </div>
+
+      <label>Correct Answer</label>
+      <select class="correct-answer">
+        <option value="">-- Select Correct Option --</option>
+        <option value="0" ${Number(answerValue) === 0 ? "selected" : ""}>A</option>
+        <option value="1" ${Number(answerValue) === 1 ? "selected" : ""}>B</option>
+        <option value="2" ${Number(answerValue) === 2 ? "selected" : ""}>C</option>
+        <option value="3" ${Number(answerValue) === 3 ? "selected" : ""}>D</option>
+      </select>
+
+      <label>Explanation / Correction</label>
+      <textarea class="explanation" placeholder="Why is this answer correct?">${data?.explanation || ""}</textarea>
+
+      <button class="btn btn-danger" onclick="removeQuestion('${qId}')">Remove Question</button>
+    `;
+
+    questionsContainer.appendChild(div);
+  }
+
+  window.addQuestion = addQuestion; // make button clickable globally
+
+  function removeQuestion(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  }
+  window.removeQuestion = removeQuestion;
+
+  function setEditMode(isEditing) {
+    document.getElementById("formTitle").textContent = isEditing ? "Edit Quiz" : "Create Quiz";
+    document.getElementById("editBanner").style.display = isEditing ? "block" : "none";
+    document.getElementById("saveBtn").style.display = isEditing ? "none" : "inline-block";
+    document.getElementById("updateBtn").style.display = isEditing ? "inline-block" : "none";
+    document.getElementById("cancelEditBtn").style.display = isEditing ? "inline-block" : "none";
+  }
+
+  function resetForm() {
+    document.getElementById("subject").value = "";
+    document.getElementById("quizTitle").value = "";
+    document.getElementById("timeMinutes").value = 10;
+    questionsContainer.innerHTML = "";
+    questionCount = 0;
+    editingQuizId = null;
+    clearStatus();
+    setEditMode(false);
+    addQuestion();
+  }
+
+  window.resetForm = resetForm;
+  window.cancelEdit = () => { resetForm(); showStatus("Edit cancelled.", "success"); };
+
+  // =====================
+  // Collect Data
+  // =====================
+  function collectQuizData() {
+    const subject = document.getElementById("subject").value.trim();
+    const title = document.getElementById("quizTitle").value.trim();
+    const timeMinutes = parseInt(document.getElementById("timeMinutes").value);
+
+    if (!subject) { showStatus("Please select a course.", "error"); return null; }
+    if (!title) { showStatus("Please enter quiz title.", "error"); return null; }
+    if (!timeMinutes || timeMinutes < 1) { showStatus("Please enter a valid time in minutes.", "error"); return null; }
+
+    const questionCards = document.querySelectorAll(".question-card");
+    if (questionCards.length === 0) { showStatus("Please add at least one question.", "error"); return null; }
+
+    const questions = [];
+    for (let card of questionCards) {
+      const question = card.querySelector(".question-text").value.trim();
+      const a = card.querySelector(".opt-a").value.trim();
+      const b = card.querySelector(".opt-b").value.trim();
+      const c = card.querySelector(".opt-c").value.trim();
+      const d = card.querySelector(".opt-d").value.trim();
+      const answer = card.querySelector(".correct-answer").value;
+      const explanation = card.querySelector(".explanation").value.trim();
+
+      if (!question || !a || !b || !c || !d || answer === "") {
+        showStatus("Please complete all fields for every question.", "error");
+        return null;
+      }
+
+      questions.push({ question, options: [a, b, c, d], answer: parseInt(answer), explanation: explanation || "No explanation provided." });
+    }
+
+    return { subject, title, timeMinutes, questions };
+  }
+
+  // =====================
+  // Firebase CRUD
+  // =====================
+  async function saveQuiz() {
+    clearStatus();
+    const data = collectQuizData();
+    if (!data) return;
+    try {
+      showStatus("Saving quiz...", "success");
+      await db.collection("quizzes").add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+      showStatus("Quiz saved successfully! ✅", "success");
+      resetForm();
+      loadUploadedQuizzes();
+    } catch (error) { console.error(error); showStatus("Failed to save quiz: " + error.message, "error"); }
+  }
+  window.saveQuiz = saveQuiz;
+
+  async function loadUploadedQuizzes() {
+    quizList.innerHTML = `<div class="loading">Loading quizzes...</div>`;
+    try {
+      const snapshot = await db.collection("quizzes").get();
+      if (snapshot.empty) { quizList.innerHTML = `<div class="small">No quizzes uploaded yet.</div>`; return; }
+      let items = [];
+      snapshot.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+      items.sort((a,b)=> (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+      quizList.innerHTML = "";
+      items.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "saved-item";
+        div.innerHTML = `
+          <div class="saved-item-title">${item.title}</div>
+          <div class="small"><strong>Course:</strong> ${item.subject || "N/A"}</div>
+          <div class="small"><strong>Time:</strong> ${item.timeMinutes || 0} min</div>
+          <div class="small"><strong>Questions:</strong> ${item.questions?.length || 0}</div>
+          <div class="button-row">
+            <button class="btn btn-warning" onclick="editQuiz('${item.id}')">Edit Quiz</button>
+            <button class="btn btn-danger" onclick="deleteQuiz('${item.id}')">Delete Quiz</button>
+          </div>`;
+        quizList.appendChild(div);
+      });
+    } catch (error) { console.error(error); quizList.innerHTML = `<div class="small" style="color:red;">Failed to load quizzes: ${error.message}</div>`; }
+  }
+  window.loadUploadedQuizzes = loadUploadedQuizzes;
+
+  async function deleteQuiz(id) {
+    if (!confirm("Delete this quiz?")) return;
+    try {
+      await db.collection("quizzes").doc(id).delete();
+      if (editingQuizId === id) resetForm();
+      showStatus("Quiz deleted successfully.", "success");
+      loadUploadedQuizzes();
+    } catch (error) { console.error(error); showStatus("Failed to delete quiz: " + error.message, "error"); }
+  }
+  window.deleteQuiz = deleteQuiz;
+
+  async function editQuiz(id) {
+    clearStatus();
+    try {
+      const doc = await db.collection("quizzes").doc(id).get();
+      if (!doc.exists) { showStatus("Quiz not found.", "error"); return; }
+      const data = doc.data();
+      editingQuizId = id;
+      document.getElementById("subject").value = data.subject || "";
+      document.getElementById("quizTitle").value = data.title || "";
+      document.getElementById("timeMinutes").value = data.timeMinutes || 10;
+      questionsContainer.innerHTML = "";
+      questionCount = 0;
+      (Array.isArray(data.questions)?data.questions:[]).forEach(q=>addQuestion(q));
+      if (!data.questions?.length) addQuestion();
+      setEditMode(true);
+      showStatus("Quiz loaded for editing.", "success");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) { console.error(error); showStatus("Failed to load quiz for editing: " + error.message, "error"); }
+  }
+  window.editQuiz = editQuiz;
+
+  async function updateQuiz() {
+    clearStatus();
+    if (!editingQuizId) { showStatus("No quiz selected for editing.", "error"); return; }
+    const data = collectQuizData();
+    if (!data) return;
+    try {
+      showStatus("Updating quiz...", "success");
+      await db.collection("quizzes").doc(editingQuizId).update({ ...data, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      showStatus("Quiz updated successfully! ✏️", "success");
+      resetForm();
+      loadUploadedQuizzes();
+    } catch (error) { console.error(error); showStatus("Failed to update quiz: " + error.message, "error"); }
+  }
+  window.updateQuiz = updateQuiz;
+
+  // =====================
+  // Init
+  // =====================
+  addQuestion();
+  loadUploadedQuizzes();
+});
+  </script>
+  
+</body>
+</html>
